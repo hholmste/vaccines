@@ -1,0 +1,400 @@
+<!doctype html>
+<html>
+<head>
+	<meta charset="UTF-8">
+	<title>Spreading disease through a lattice!</title>
+</head>
+<body>
+
+	<svg width="800" height="800">
+	
+		<filter id="Bevel" filterUnits="objectBoundingBox" x="-10%" y="-10%" width="120%" height="120%">
+	    <feGaussianBlur in="SourceAlpha" stdDeviation="0.5" result="blur"/>
+	    <feSpecularLighting in="blur" surfaceScale="5" specularConstant="0.5" specularExponent="20" result="specOut" lighting-color="white">
+	      <fePointLight x="-5000" y="-10000" z="0000"/>
+	    </feSpecularLighting>
+	    <feComposite in="specOut" in2="SourceAlpha" operator="in" result="specOut2"/>
+	    <feComposite in="SourceGraphic" in2="specOut2" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="litPaint" />
+	  </filter>
+		<filter id="dropshadow" height="150%">
+		  <feGaussianBlur in="SourceAlpha" stdDeviation="4"/> <!-- stdDeviation is how much to blur -->
+		  <feOffset dx="1" dy="4" result="offsetblur"/> <!-- how much to offset -->
+		  <feMerge> 
+		    <feMergeNode/> <!-- this contains the offset blurred image -->
+		    <feMergeNode in="SourceGraphic"/> <!-- this contains the element that the filter is applied to -->
+		  </feMerge>
+		</filter>
+	</svg>
+	
+	<div id="controls">
+		<p><output for="chance_of_vaccination" id="textual_chance_of_vaccination"></output> of the population is vaccinated</p>
+		<p>
+			<input type="range" min="0" max="100" id="chance_of_vaccination" step="1" onchange="chance_of_vaccination_change(value)" defaultValue="50"></input>
+		</p>
+		<p>The vaccine is <output for="efficacy_of_vaccination" id="textual_efficacy_of_vaccination"></output> efficient.</p>
+		<p>
+			<input type="range" min="0" max="100" id="efficacy_of_vaccination" step="1" onchange="efficacy_of_vaccination_change(value)" defaultValue="90"></input>
+		</p>
+		<p>Ms per tick:</p>
+		<p><span id="ms_per_tick" contenteditable="true" class="userinput">250</span></p>
+		
+		<p><button type="button" onclick="javascript:kickOff();">Launch</button></p>
+
+		<p>Survivors: <span id="population_size"></span></p>
+		<p>Number of vaccinated: <span id="number_of_vaccinated"></span></p>
+		<p>Number of sick or dead: <span id="number_of_sick"></span></p>
+		<p>Number of still contagious: <span id="number_of_contagious"></span></p>
+	</div>
+
+	<style type="text/css">
+		#controls {
+			left: 75%;
+			height: 80%;
+			width: 24%;
+			float: left;
+		}
+
+		button {
+			width: 80%;
+			margin: auto;
+			border: 2px solid #38E0A9;
+		}
+
+		output::after{
+			content: "%";
+		}
+
+		.userinput {
+			border: 1px dashed gray;
+			padding: 2px;
+		}
+
+		rect {
+			stroke-width: 2px;
+			stroke: #000;
+		}
+	</style>
+	<script src="http://d3js.org/d3.v3.min.js" charset="utf-8"></script>
+	<script>
+		function chance_of_vaccination_change(new_value) {
+			document.querySelector("#textual_chance_of_vaccination").value = new_value;
+		}
+		
+		function efficacy_of_vaccination_change(new_value) {
+			document.querySelector("#textual_efficacy_of_vaccination").value = new_value;
+		}
+		
+		var state_expose_people = 0;
+		var state_determine_contagion = 1;
+		var state_no_more_contagion = 2;
+
+		var tick_length = 10;
+
+		var current_state = state_expose_people;
+
+		var max_exposures = 1;
+
+		var grid = {}; // the list of nodes and vectors of infection, with some information about size
+
+		var svg;
+		var svg_size = 800;
+		var side_length = 31;
+		var cell_offset = Math.floor(svg_size / side_length);
+		var svg_whitespace_ratio = 0.25;
+		var svg_whitespace = svg_size * svg_whitespace_ratio;
+		var cell_whitespace = Math.floor(svg_whitespace / side_length);
+		var cell_size = cell_offset - cell_whitespace;
+
+		function kickOff() {
+			undraw();
+			intialize(side_length,
+				document.querySelector('#chance_of_vaccination').value,
+				document.querySelector('#efficacy_of_vaccination').value);
+			selectSick(Math.floor(side_length / 2), Math.floor(side_length / 2));
+			tick();
+		}
+
+		/**
+		 * size_of_network is the length of the side of a square network. E.g. size_of_network = 10 gives a network of 10 * 10 = 100 nodes
+		 * chanze_of_vaccination is a percentage chance of any given node being vaccinated, range 0 - 100
+		 * efficacy_of_vaccination is the chance that a vaccination will protect a person when exposed to disease
+		*/
+		function intialize(size_of_network, chance_of_vaccination, efficacy_of_vaccination) {
+			console.log("Starting");
+			console.log("chance_of_vaccination: " + chance_of_vaccination);
+			console.log("efficacy_of_vaccination: " + efficacy_of_vaccination);
+
+			console.log(document.querySelector('#ms_per_tick'));
+			tick_length = document.querySelector('#ms_per_tick').textContent;
+
+			console.log("tick_length: " + tick_length);
+
+			current_state = state_expose_people;
+			grid = {};
+			grid.nodes = [];
+			grid.size_of_network = size_of_network;
+			grid.efficacy_of_vaccination = efficacy_of_vaccination;
+			grid.exposeDiagonally = false;
+			for (var i = 0; i < size_of_network; i++) {
+				grid.nodes[i] = [];
+				for (var j = 0; j < size_of_network; j++) {
+					grid.nodes[i][j] = createNode(i, j, chance_of_vaccination, efficacy_of_vaccination);
+				}
+			}
+			svg = d3.select("svg");
+		}
+
+		function createNode(x, y, chance_of_vaccination, efficacy_of_vaccination) {
+			var node = {};
+			node.x = x;
+			node.y = y;
+			node.vaccinated = Math.floor(100 * Math.random()) < chance_of_vaccination;
+			node.vaccination_worked = (100 * Math.random()) < grid.efficacy_of_vaccination;
+			node.healthy = true;
+			node.exposed = false;
+			node.contagious = false;
+			node.attempted_exposures = 0; // the number of times this sick man has tried to expose his neighbours
+			return node;
+		}
+
+		function selectSick(sickX, sickY) {
+			grid.nodes[sickX][sickY].healthy = false;
+			grid.nodes[sickX][sickY].contagious = true;
+			grid.nodes[sickX][sickY].vaccinated = false;
+			grid.nodes[sickX][sickY].vaccination_worked = false;
+		}
+
+		function tick() {
+			if (current_state == state_expose_people) {
+				exposePeople();
+			} else if (current_state == state_determine_contagion) {
+				contaminatePeople();
+				uncontaminateTheSick();
+			}
+
+			draw();
+			
+			var numberOfContagious = 0;
+			for (var i = 0; i < grid.size_of_network; i++) {
+				for (var j = 0; j < grid.size_of_network; j++) {
+					if (grid.nodes[i][j].contagious) {
+						numberOfContagious++;
+					}
+				}
+			}
+
+			if (numberOfContagious > 0) {
+				current_state = (current_state + 1) % 2;
+			} else {
+				current_state = state_no_more_contagion;
+				console.log("Disease burned out");
+				debug();
+				return;
+			}
+
+			debug();
+			setTimeout(tick, tick_length);
+		}
+
+		function exposePeople() {
+			for (var i = 0; i < grid.size_of_network; i++) {
+				for (var j = 0; j < grid.size_of_network; j++) {
+					if (grid.nodes[i][j].contagious) {
+						exposeNeighbours(i, j);
+						grid.nodes[i][j].attempted_exposures++;
+					}
+				}
+			}
+		}
+
+		function exposeNeighbours(x, y) {
+			if (grid.exposeDiagonally) {
+				exposeNeighbour(x - 1, y - 1);	
+				exposeNeighbour(x + 1, y - 1);
+				exposeNeighbour(x - 1, y + 1);
+				exposeNeighbour(x + 1, y + 1);
+			}
+			
+			exposeNeighbour(x, y - 1);
+			exposeNeighbour(x - 1, y);
+			exposeNeighbour(x + 1, y);
+			exposeNeighbour(x, y + 1);
+		}
+
+		function exposeNeighbour(x, y) {
+			if (x >= 0 && y >= 0 && x < grid.size_of_network && y < grid.size_of_network) {
+				var node = grid.nodes[x][y];
+				node.exposed = true;
+			}
+		}
+
+		function contaminatePeople() {
+			for (var i = 0; i < grid.size_of_network; i++) {
+				for (var j = 0; j < grid.size_of_network; j++) {
+					var node = grid.nodes[i][j];
+					if (node.exposed && (!node.vaccinated || !node.vaccination_worked)) {
+						node.healthy = false;
+						node.contagious = true;						
+					}
+					node.exposed = false;
+				}
+			}
+		}
+
+		function uncontaminateTheSick() {
+			for (var i = 0; i < grid.size_of_network; i++) {
+				for (var j = 0; j < grid.size_of_network; j++) {
+					if (grid.nodes[i][j].contagious && grid.nodes[i][j].attempted_exposures >= max_exposures) {
+						grid.nodes[i][j].contagious = false;
+					}
+				}
+			}
+		}
+
+		function debug() {
+			var healthy = 0;
+			var vaccinated = 0;
+			var exposed = 0;
+			var contagious = 0;
+			
+			for (var i = 0; i < grid.size_of_network; i++) {
+				for (var j = 0; j < grid.size_of_network; j++) {
+					if (grid.nodes[i][j].healthy) {
+						healthy++;
+					} 
+					if (grid.nodes[i][j].vaccinated) {
+						vaccinated++;
+					}
+					if (grid.nodes[i][j].exposed) {
+						exposed++;
+					}
+					if (grid.nodes[i][j].contagious) {
+						contagious++;
+					}
+				}
+			}
+
+			document.querySelector("#population_size").textContent = healthy;
+			document.querySelector("#number_of_sick").textContent = (grid.size_of_network * grid.size_of_network) - healthy;
+			document.querySelector("#number_of_vaccinated").textContent = vaccinated;
+			document.querySelector("#number_of_contagious").textContent = contagious;
+		}
+
+		function flatten(two_d_array) {
+			var merged = [];
+			return merged.concat.apply(merged, two_d_array);
+		}
+
+		function selectClass(node, index) {
+			var clz = "";
+
+			if (node.vaccinated) {
+				if (node.vaccination_worked) {
+					clz = "vaccinated ";
+				} else {
+					clz = "failedvaccine ";
+				}
+			} else {
+				clz = "unvaccinated ";
+			}
+
+			if (node.contagious) {
+				clz = clz + "contagious";
+			} else if (node.exposed && node.healthy) {
+				clz = clz + "exposed";
+			} else if (node.healthy) {
+				clz = clz + "healthy";
+			} else {
+				clz = clz + "dead";
+			}
+			return clz;
+		}
+
+		var dash_array_vaccinated = "";
+		var dash_array_failed_vaccine = "6, 6";
+		var dash_array_unvaccinated = "3, 3";
+		function selectBorder(node, index) {
+			if (node.vaccinated) {
+				if (node.vaccination_worked) {
+					return dash_array_vaccinated;
+				} else {
+					return dash_array_failed_vaccine;
+				}
+			} else {
+				return dash_array_unvaccinated;
+			}
+		}
+
+		var color_contagious = "#E03856";
+		var color_exposed = "yellow";
+		var color_healthy = "#38E0A9";
+		var color_dead = "#E0CA38";
+		function selectFill(node, index) {
+			if (node.contagious) {
+				return color_contagious;
+			} else if (node.exposed && node.healthy) {
+				return color_exposed;
+			} else if (node.healthy) {
+				return color_healthy;
+			} else {
+				return color_dead;
+			}
+		}
+
+		function selectRounding(node, index) {
+			if (node.healthy || true) {
+				return 3;
+			}
+			return cell_size;
+		}
+
+		function selectInset(node, index) {
+			if (node.healthy) {
+				return "";
+			}
+			return "2px 2px 2px rgba(1,1,0,0)";
+		}
+
+		function selectFilter(node, index) {
+			if (node.healthy && node.vaccinated) {
+				return "url(#dropshadow)";
+			}
+			return "";
+		}
+
+		function undraw() {
+			if (svg) {
+				svg.selectAll("rect").data([]).exit().remove();
+			}
+		}
+
+		function draw() {
+			var rects = svg.selectAll("rect")
+				.data(flatten(grid.nodes));
+
+			rects.enter()
+				.append("rect")
+				.attr("x", function(d, i) { return d.x * cell_offset; })
+				.attr("y", function(d, i) { return d.y * cell_offset; })
+				.attr("width", cell_size)
+				.attr("height", cell_size)
+				.attr("rx", 3)
+				.attr("ry", 3);
+
+			rects
+				.transition()
+				.duration(Math.floor(tick_length * 0.25))
+				.style("stroke-dasharray", selectBorder)
+				.style("fill", selectFill)
+				.style("filter", selectFilter)
+				.attr("rx", selectRounding)
+				.attr("ry", selectRounding);
+		}
+
+		window.onload = function() {
+			chance_of_vaccination_change(document.querySelector("#chance_of_vaccination").value);
+			efficacy_of_vaccination_change(document.querySelector("#efficacy_of_vaccination").value);
+		};
+	</script>
+</body>
+</html>
