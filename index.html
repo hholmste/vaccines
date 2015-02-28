@@ -17,41 +17,81 @@
 	    <feComposite in="SourceGraphic" in2="specOut2" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="litPaint" />
 	  </filter>
 		<filter id="dropshadow" height="150%">
-		  <feGaussianBlur in="SourceAlpha" stdDeviation="4"/> <!-- stdDeviation is how much to blur -->
-		  <feOffset dx="1" dy="4" result="offsetblur"/> <!-- how much to offset -->
+		  <feGaussianBlur in="SourceAlpha" stdDeviation="4"/>
+		  <feOffset dx="1" dy="4" result="offsetblur"/>
 		  <feMerge> 
-		    <feMergeNode/> <!-- this contains the offset blurred image -->
-		    <feMergeNode in="SourceGraphic"/> <!-- this contains the element that the filter is applied to -->
+		    <feMergeNode/>
+		    <feMergeNode in="SourceGraphic"/>
 		  </feMerge>
 		</filter>
 	</svg>
-	
-	<div id="controls">
-		<p><output for="chance_of_vaccination" id="textual_chance_of_vaccination"></output> of the population is vaccinated</p>
-		<p>
-			<input type="range" min="0" max="100" id="chance_of_vaccination" step="1" onchange="chance_of_vaccination_change(value)" defaultValue="50"></input>
-		</p>
-		<p>The vaccine is <output for="efficacy_of_vaccination" id="textual_efficacy_of_vaccination"></output> efficient.</p>
-		<p>
-			<input type="range" min="0" max="100" id="efficacy_of_vaccination" step="1" onchange="efficacy_of_vaccination_change(value)" defaultValue="90"></input>
-		</p>
-		<p>Ms per tick:</p>
-		<p><span id="ms_per_tick" contenteditable="true" class="userinput">250</span></p>
-		
-		<p><button type="button" onclick="javascript:kickOff();">Launch</button></p>
+	<div>
+		<div id="heading">
+			<h1>Herd immunity</h1>
+		</div>
 
-		<p>Survivors: <span id="population_size"></span></p>
-		<p>Number of vaccinated: <span id="number_of_vaccinated"></span></p>
-		<p>Number of sick or dead: <span id="number_of_sick"></span></p>
-		<p>Number of still contagious: <span id="number_of_contagious"></span></p>
+		<div id="controls">
+			<h3>Prepare for the disease</h3>
+			<p><output for="chance_of_vaccination" id="textual_chance_of_vaccination"></output> of the population is vaccinated</p>
+			<p>
+				<input type="range" min="0" max="100" id="chance_of_vaccination" step="1" onchange="chance_of_vaccination_change(value)" defaultValue="90" value="90"></input>
+			</p>
+			<p>The vaccine is <output for="efficacy_of_vaccination" id="textual_efficacy_of_vaccination"></output> efficient.</p>
+			<p>
+				<input type="range" min="0" max="100" id="efficacy_of_vaccination" step="1" onchange="efficacy_of_vaccination_change(value)" defaultValue="90" value="90"></input>
+			</p>
+			<p>Ms per tick:</p>
+			<p><span id="ms_per_tick" contenteditable="true" class="userinput">250</span></p>
+			
+			<p><button type="button" onclick="javascript:kickOff();">Launch</button></p>
+
+			<p>Survivors: <span id="population_size"></span></p>
+			<p>Vaccinated: <span id="number_of_vaccinated"></span></p>
+			<p>Sick or dead: <span id="number_of_sick"></span></p>
+			<p>Infectors: <span id="number_of_contagious"></span></p>
+		</div>
+
+		<div id="explains">
+			<h3>Huh?</h3>
+			<p>The disease infects the four cardial directions</p>
+			<p>Green squares are healthy squares</p>
+			<p>Yellow squares are sick or dead</p>
+			<p>Full lines are vaccinated</p>
+			<p>Dashed lines are vaccinated, but the vaccine didn't work</p>
+			<p>Dotted lines are not vaccinated</p>
+		</div>
+
 	</div>
 
 	<style type="text/css">
+		#heading {
+			position: fixed;
+			top: 0;
+			text-align: left;
+			width: 99%;
+		}
+
 		#controls {
-			left: 75%;
+			position: fixed;
+			top: 10%;
 			height: 80%;
 			width: 24%;
 			float: left;
+		}
+
+		#explains {
+			position: fixed;
+			top: 10%;
+			left: 80%;
+			height: 80%;
+			width: 19%;
+			float: right;
+		}
+
+		svg {
+			position: fixed;
+			width: 61%;
+			left: 25%;
 		}
 
 		button {
