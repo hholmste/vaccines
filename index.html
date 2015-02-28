@@ -45,12 +45,13 @@ Hi. This is written real quick-like, and probably works really poorly on all pla
 			</p>
 			
 			<p>Simulation-speed</p>
-			<p><input type="radio" name="simulation_speed" label="fast" value="25">Fast</input></p>
+			<p><input type="radio" name="simulation_speed" label="fast" value="25" checked="checked">Fast</input></p>
 			<p><input type="radio" name="simulation_speed" label="medium" value="250">Medium</input></p>
 			<p><input type="radio" name="simulation_speed" label="slow" value="750">Slow</input></p>
 			
 			<p><button type="button" onclick="javascript:kickOff();" id="launcher_button">Infect someone!</button></p>
 
+			<p>Initial world population: <span id="world_population"></span></p>
 			<p>Survivors: <span id="population_size"></span></p>
 			<p>Vaccinated: <span id="number_of_vaccinated"></span></p>
 			<p>Sick or dead: <span id="number_of_sick"></span></p>
@@ -129,7 +130,9 @@ Hi. This is written real quick-like, and probably works really poorly on all pla
 		function efficacy_of_vaccination_change(new_value) {
 			document.querySelector("#textual_efficacy_of_vaccination").value = new_value;
 		}
-		
+
+		var NUMBER_FORMATTER = new Intl.NumberFormat();
+
 		var should_run = false;
 		var state_expose_people = 0;
 		var state_determine_contagion = 1;
@@ -152,6 +155,9 @@ Hi. This is written real quick-like, and probably works really poorly on all pla
 		var cell_whitespace = Math.floor(svg_whitespace / side_length);
 		var cell_size = cell_offset - cell_whitespace;
 
+		var world_population = 4000000;
+		var people_per_cell = Math.floor(world_population / (side_length * side_length));
+
 		function kickOff() {
 			should_run = true;
 			undraw();
@@ -161,6 +167,7 @@ Hi. This is written real quick-like, and probably works really poorly on all pla
 			selectSick(Math.floor(side_length / 2), Math.floor(side_length / 2));
 			document.querySelector("#launcher_button").textContent = "End this madness";
 			document.querySelector("#launcher_button").onclick = end_it_all;
+			document.querySelector("#world_population").textContent = NUMBER_FORMATTER.format(world_population);
 			tick();
 		}
 
@@ -327,10 +334,10 @@ Hi. This is written real quick-like, and probably works really poorly on all pla
 				}
 			}
 
-			document.querySelector("#population_size").textContent = healthy;
-			document.querySelector("#number_of_sick").textContent = (grid.size_of_network * grid.size_of_network) - healthy;
-			document.querySelector("#number_of_vaccinated").textContent = vaccinated;
-			document.querySelector("#number_of_contagious").textContent = contagious;
+			document.querySelector("#population_size").textContent = NUMBER_FORMATTER.format(healthy * people_per_cell);
+			document.querySelector("#number_of_sick").textContent = NUMBER_FORMATTER.format(((grid.size_of_network * grid.size_of_network) - healthy) * people_per_cell);
+			document.querySelector("#number_of_vaccinated").textContent = NUMBER_FORMATTER.format(vaccinated * people_per_cell);
+			document.querySelector("#number_of_contagious").textContent = NUMBER_FORMATTER.format(contagious * people_per_cell);
 		}
 
 		function flatten(two_d_array) {
